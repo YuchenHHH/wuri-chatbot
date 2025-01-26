@@ -35,7 +35,6 @@ class SimpleChatbot:
             print(content, end="", flush=True)
             full_content += content
         return full_content
-
     def chat_loop(self):
         print("\n🌟 简单聊天机器人已启动（输入 'exit' 退出）\n")
         while True:
@@ -47,28 +46,67 @@ class SimpleChatbot:
                 if not user_input:
                     continue
 
+                # 保存用户输入
                 self._save_conversation(f"**You:** {user_input}\n\n")
                 self.history.append({"role": "user", "content": user_input})
 
+                # 获取流式响应
                 response = self.client.chat.completions.create(
                     model="deepseek-reasoner",
                     messages=self.history,
                     stream=True
                 )
 
-                assistant_response = ""
-                thinking_stream = (chunk for chunk in response if chunk.choices[0].delta.reasoning_content)
-                answer_stream = (chunk for chunk in response if chunk.choices[0].delta.content)
+                thinking = ""
+                answer = ""
+                has_thinking = False
+                has_answer = False
 
-                thinking = self._print_stream(thinking_stream, "🤔 思考")
-                answer = self._print_stream(answer_stream, "💡 回答")
-                
-                self._save_conversation(f"**思考:** {thinking}\n\n**回答:** {answer}\n\n")
-                self.history.append({"role": "assistant", "content": answer})
+                for chunk in response:
+                    # 处理思考内容
+                    if getattr(chunk.choices[0].delta, 'reasoning_content', None):
+                        thinking_chunk = chunk.choices[0].delta.reasoning_content
+                        thinking += thinking_chunk
+                        if not has_thinking:
+                            print("\n🤔 思考: ", end="", flush=True)
+                            has_thinking = True
+                        print(thinking_chunk, end="", flush=True)
+
+                    # 处理回答内容
+                    if getattr(chunk.choices[0].delta, 'content', None):
+                        answer_chunk = chunk.choices[0].delta.content
+                        answer += answer_chunk
+                        if not has_answer:
+                            if has_thinking:
+                                print("\n💡 回答: ", end="", flush=True)
+                            else:
+                                print("\n💡 回答: ", end="", flush=True)
+                            has_answer = True
+                        print(answer_chunk, end="", flush=True)
+
+                # 处理纯文字回答没有思考的情况
+                if not has_thinking and has_answer:
+                    print()  # 确保最后换行
+
+                # 保存到文件和历史记录
+                if thinking or answer:
+                    self._save_conversation(
+                        f"**思考:** {thinking}\n\n"
+                        f"**回答:** {answer}\n\n"
+                    )
+                    self.history.append({
+                        "role": "assistant",
+                        "content": answer
+                    })
 
             except KeyboardInterrupt:
                 print("\n🛑 对话已中断")
                 break
+            except Exception as e:
+                print(f"\n⚠️ 发生错误: {str(e)}")
+                # 回滚未完成的对话
+                if self.history and self.history[-1]["role"] == "user":
+                    self.history.pop()
 
 if __name__ == "__main__":
     bot = SimpleChatbot()
