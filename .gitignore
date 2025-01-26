@@ -1,0 +1,4 @@
+.venv/
+chat_history/
+config.json
+__pycache__/
